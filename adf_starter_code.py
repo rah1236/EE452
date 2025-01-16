@@ -59,15 +59,16 @@ class ADF4351:
         GPIO.output(CE, GPIO.LOW)
 
     def write_register(self, reg_value):
-        # Convert 32-bit register value to list of bytes
         bytes_to_write = [
             (reg_value >> 24) & 0xFF,
             (reg_value >> 16) & 0xFF,
             (reg_value >> 8) & 0xFF,
             reg_value & 0xFF
         ]
+        print(f"\nWriting register value: 0x{reg_value:08X}")
+        print(f"Bytes to write: [0x{bytes_to_write[0]:02X}, 0x{bytes_to_write[1]:02X}, 0x{bytes_to_write[2]:02X}, 0x{bytes_to_write[3]:02X}]")
         self.spi.xfer2(bytes_to_write)
-        time.sleep(0.0001)  # Short delay between register writes
+        time.sleep(0.0001)
 
     def gcd(self, a, b):
         while b:
@@ -75,6 +76,9 @@ class ADF4351:
         return a
 
     def calculate_registers(self, freq_hz):
+        print(f"\nCalculating registers for {freq_hz/1e6:.3f} MHz")
+        print(f"Reference frequency: {self.ref_freq/1e6:.3f} MHz")
+
         if not (ADF_FREQ_MIN <= freq_hz <= ADF_FREQ_MAX):
             raise ValueError(f"Frequency must be between {ADF_FREQ_MIN/1e6:.3f} MHz and {ADF_FREQ_MAX/1e6:.3f} MHz")
 
@@ -88,29 +92,35 @@ class ADF4351:
             rf_div_sel += 1
 
         vco_freq = freq_hz * rf_div
+        print(f"VCO frequency: {vco_freq/1e6:.3f} MHz")
+        print(f"RF divider: {rf_div} (selector: {rf_div_sel})")
         
         # Set prescaler based on VCO frequency
         self.prescaler = 1 if vco_freq > 3600000000 else 0
+        print(f"Prescaler: {self.prescaler}")
 
         # Calculate PFD frequency
         pfd_freq = Decimal(self.ref_freq) * (Decimal(1 + self.rd2refdouble) / 
-                                           Decimal(self.rcounter * (1 + self.rd1rdiv2)))
+                                        Decimal(self.rcounter * (1 + self.rd1rdiv2)))
+        print(f"PFD frequency: {float(pfd_freq)/1e6:.3f} MHz")
 
         # Calculate N divider values
         N = Decimal(vco_freq) / pfd_freq
         N_int = int(N)
+        print(f"N = {float(N):.3f} (INT: {N_int})")
         
         if self.prescaler == 0 and not (23 <= N_int <= 65535):
-            raise ValueError("N_int out of range for prescaler=0")
+            raise ValueError(f"N_int {N_int} out of range for prescaler=0")
         elif self.prescaler == 1 and not (75 <= N_int <= 65535):
-            raise ValueError("N_int out of range for prescaler=1")
+            raise ValueError(f"N_int {N_int} out of range for prescaler=1")
 
         # Calculate fractional values
         MOD = int(pfd_freq / self.chan_step)
-        if MOD < 2 or MOD > 4095:
-            raise ValueError("MOD out of range")
-            
+        MOD = min(MOD, 4095)  # Limit to 12 bits
+        print(f"Initial MOD: {MOD}")
+                
         FRAC = int((N - N_int) * MOD + Decimal('0.5'))
+        print(f"Initial FRAC: {FRAC}")
         
         # Optimize FRAC and MOD
         if FRAC != 0:
@@ -118,38 +128,51 @@ class ADF4351:
             if gcd > 1:
                 FRAC //= gcd
                 MOD //= gcd
+                print(f"Optimized FRAC/MOD: {FRAC}/{MOD} (GCD: {gcd})")
 
         if FRAC >= MOD:
-            raise ValueError("FRAC must be less than MOD")
+            raise ValueError(f"FRAC ({FRAC}) must be less than MOD ({MOD})")
 
+        print("\nCalculating register values:")
         # Build registers
         r0 = (N_int << 15) | (FRAC << 3) | 0
+        print(f"R0 = 0x{r0:08X} (N_int:{N_int}, FRAC:{FRAC})")
+        
         r1 = (MOD << 3) | (self.prescaler << 27) | 1
+        print(f"R1 = 0x{r1:08X} (MOD:{MOD}, Prescaler:{self.prescaler})")
         
         # R2: Enhanced settings for noise and spurs
         r2 = (0x7 << 9)  # Charge pump current
         if FRAC == 0:    # Integer-N mode
             r2 |= (1 << 7) | (1 << 8)  # LDP and LDF settings
+            print("Integer-N mode enabled")
         r2 |= (1 << 6) | 2  # PD polarity and control bits
+        print(f"R2 = 0x{r2:08X}")
         
         # R3: Band select and auxiliary settings
         r3 = (1 << 23)   # Band select clock mode
         if FRAC == 0:
             r3 |= (1 << 21) | (1 << 22)  # Integer-N optimizations
         r3 |= 3
+        print(f"R3 = 0x{r3:08X}")
         
         # R4: Output and divider settings
         r4 = (self.pwr_level << 3) | (1 << 5) | (rf_div_sel << 20) | (1 << 23) | 4
+        print(f"R4 = 0x{r4:08X} (Power:{self.pwr_level}, RF_Div:{rf_div_sel})")
         
         # R5: Lock detect and misc settings
         r5 = (1 << 22) | 5
+        print(f"R5 = 0x{r5:08X}")
 
         self.registers = [r5, r4, r3, r2, r1, r0]
         return True
 
     def set_frequency(self, freq_hz):
+        print(f"\nSetting frequency to {freq_hz/1e6:.3f} MHz")
         if self.calculate_registers(freq_hz):
-            for reg in self.registers:
+            print("\nWriting registers in order (5 to 0):")
+            for i, reg in enumerate(reversed(self.registers)):
+                print(f"\nWriting R{5-i}")
                 self.write_register(reg)
                 time.sleep(0.001)
             return True
