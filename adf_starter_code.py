@@ -147,7 +147,9 @@ class ADF4351:
             r2 |= (1 << 7) | (1 << 8)  # LDP and LDF settings
             print("Integer-N mode enabled")
         r2 |= (1 << 6) | 2  # PD polarity and control bits
+        r2 |= (self.rcounter << 14)
         print(f"R2 = 0x{r2:08X}")
+
         
         # R3: Band select and auxiliary settings
         r3 = (1 << 23)   # Band select clock mode
