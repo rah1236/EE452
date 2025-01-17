@@ -164,7 +164,7 @@ class ADF4351:
         r5 = (1 << 22) | 5
         print(f"R5 = 0x{r5:08X}")
 
-        self.registers = [r5, r4, r3, r2, r1, r0]
+        self.registers = [r0, r1, r2, r3, r4, r5]
         return True
 
     def set_frequency(self, freq_hz):
