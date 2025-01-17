@@ -170,10 +170,11 @@ class ADF4351:
     def set_frequency(self, freq_hz):
         print(f"\nSetting frequency to {freq_hz/1e6:.3f} MHz")
         if self.calculate_registers(freq_hz):
+            # self.registers contains [r5, r4, r3, r2, r1, r0]
             print("\nWriting registers in order (5 to 0):")
-            for i, reg in enumerate(reversed(self.registers)):
-                print(f"\nWriting R{5-i}")
-                self.write_register(reg)
+            for i in range(6):
+                print(f"\nWriting R{i}")
+                self.write_register(self.registers[i])
                 time.sleep(0.001)
             return True
         return False
