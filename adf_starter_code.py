@@ -163,7 +163,7 @@ class ADF4351:
         print(f"R4 = 0x{r4:08X} (Power:{self.pwr_level}, RF_Div:{rf_div_sel})")
         
         # R5: Lock detect and misc settings
-        r5 = (1 << 22) | 5
+        r5 = (1 << 22) | 3 << 19 | 5
         print(f"R5 = 0x{r5:08X}")
 
         self.registers = [r0, r1, r2, r3, r4, r5]
