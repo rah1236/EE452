@@ -159,7 +159,7 @@ class ADF4351:
         print(f"R3 = 0x{r3:08X}")
         
         # R4: Output and divider settings
-        r4 = (self.pwr_level << 3) | (1 << 5) | (rf_div_sel << 20) | (1 << 23) | 4
+        r4 = (self.pwr_level << 3) | (1 << 5) | (self.band_sel_clock << 12) | (rf_div_sel << 20) | (1 << 23) | 4
         print(f"R4 = 0x{r4:08X} (Power:{self.pwr_level}, RF_Div:{rf_div_sel})")
         
         # R5: Lock detect and misc settings
